@@ -1,0 +1,7 @@
+{% extends 'base.html' %}
+{% block title %}{{ '编辑任务' if task else '添加任务' }}{% endblock %}
+{% block content %}
+<a class="back" href="{{ url_for('index') }}">← 返回任务</a>
+<div class="heading"><div><div class="eyebrow">{{ '探测任务' if kind == 'probe' else '定时任务' }}</div><h1>{{ '编辑' if task else '添加' }}{{ '探测任务' if kind == 'probe' else '定时任务' }}</h1></div></div>
+<div class="card form-card">{% include '_task_form.html' %}</div>
+{% endblock %}

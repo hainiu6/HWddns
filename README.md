@@ -1,3 +1,72 @@
 # HWddns
 
-DNS 管理面板，支持 Linux 和 Windows。
+DNS 管理面板。支持 A、AAAA、CNAME 记录，单次或每日定时任务、循环端口探测任务，以及立即执行、暂停、开启、编辑、删除和执行日志。Linux 和 Windows 使用相同的面板功能，登录状态保持 30 天，并提供独立的 IP 可用性检测。
+
+## Windows 安装版
+
+下载并运行 [HWddns-Windows-Setup.exe](https://github.com/hainiu6/HWddns/releases/latest/download/HWddns-Windows-Setup.exe)。支持 64 位 Windows，无需 Docker、Python 或管理员权限。安装完成后从开始菜单启动 HWddns，程序默认在右下角系统托盘后台运行，不自动打开网页、不显示底部任务栏按钮。右键托盘图标选择“打开管理面板”，访问 `http://127.0.0.1:6006`，首次密码为 **Qwer1234**。
+
+Windows 版默认监听所有网卡（`HOST=0.0.0.0`）。最小化或关闭启动窗口只会隐藏到托盘，定时任务继续运行；完全停止程序请选择托盘菜单的“退出程序”。安装时可勾选“开机自动启动”，也可在托盘菜单或启动窗口中开启、关闭；此设置对当前用户生效，在登录 Windows 后后台启动，不会自动弹出网页。首次运行会在 `%LOCALAPPDATA%\HWddns` 创建配置和数据库，升级或卸载程序不会清除这些数据；卸载会取消开机启动。可修改 `%LOCALAPPDATA%\HWddns\config.env` 中的 `ADMIN_PASSWORD`、`PORT`、`HOST` 和 `TZ`，然后重启程序。将 `HOST` 设为 `127.0.0.1` 可限制为本机访问。安装包未进行商业代码签名，Windows 可能显示“未知发布者”提示。
+
+### 从外网访问 Windows 服务器
+
+1. 先修改配置文件中的默认管理员密码并重启程序。直接通过 HTTP 登录会以明文在网络上传输密码，公网使用建议配 HTTPS 反向代理。
+2. 在 Windows 服务器上以**管理员身份**打开 PowerShell，执行以下命令放行 TCP 6006：
+
+   ```powershell
+   New-NetFirewallRule -DisplayName "HWddns TCP 6006" -Direction Inbound -Protocol TCP -LocalPort 6006 -Action Allow
+   ```
+
+3. 在服务器提供商的安全组或网络防火墙中放行入站 TCP 6006；可按需要限制来源 IP。之后从另一台设备访问 `http://服务器公网IP:6006`。如果自定义了 `PORT`，上述规则和网址中的端口也要一起修改。
+
+源码仓库的 [Windows 构建流程](https://github.com/hainiu6/HWddns/actions/workflows/windows-installer.yml) 会在发布标签或更新 main 分支中的 Windows 版本号时生成、检查并发布安装包。
+
+## 一键部署到 Linux
+
+需要一台可访问 GitHub、Docker Hub 和 PyPI 的 Linux 服务器，并安装 `curl`。以 **root 用户**登录服务器后运行（无需 `sudo`）：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/hainiu6/HWddns/main/deploy.sh | bash
+```
+
+脚本会安装 Docker（如果缺少）、拉取本仓库、生成应用密钥并启动容器。访问 `http://服务器IP:6006`，初始管理员密码为 **Qwer1234**。首次登录后，在“云账号设置”中填写 DNS 服务的 Access Key ID 和 Secret Access Key，再添加任务。如果当前不是 root 用户，请先用 `su -` 切换到 root；安装了 `sudo` 的服务器也可在命令末尾使用 `| sudo bash`。
+
+**公网使用前请修改密码并配置 HTTPS。** 密码位于 `/opt/hwddns/.env` 的 `ADMIN_PASSWORD`；修改后在 `/opt/hwddns` 运行 `docker compose up -d --force-recreate`。可在同一文件修改 `PORT` 和 `TZ`。如果 HTTPS 由反向代理提供，可设置 `COOKIE_SECURE=1` 后重启。
+
+重复运行部署命令会自动将仓库地址更新为 `hainiu6/HWddns`，拉取最新代码并重建容器，从旧仓库迁移时会先保留旧代码备份分支；若源码有未提交修改会停止迁移。已有 `.env` 和 Docker 数据卷不会被覆盖。卸载前请备份数据卷。
+
+## 使用说明
+
+1. 使用具备 DNS 公网域名查看、记录集查看、创建和修改权限的 AK/SK。面板会加密保存凭据，不在页面回显。
+2. **定时任务：**输入要修改的完整域名，选择记录类型（默认 A）、目标 IPv4 / IPv6 / CNAME 域名、首次执行时间及频率。时间使用 `.env` 中配置的时区，默认 `Asia/Shanghai`。
+3. **探测任务：**在任务列表的“添加探测任务”弹窗中填写要探测的域名和 TCP 端口、要修改的解析域名（可留空，与探测域名相同）、备用目标和循环间隔（1–1440 分钟）。备用目标可逐行填写，最多 10 个；A 填 IPv4、AAAA 填 IPv6、CNAME 填域名。首次探测会在创建后开始。主域名连续两次 TCP 连接都失败后，按填写顺序检查每个备用目标的同一端口，选第一个可连接的目标修改解析；全部不通则保留原解析并记入日志。任务列表会显示最近一次主域名探测的绿色对号（连通）或红色叉号（不通）；尚未探测显示灰色横线。
+4. 在任务列表标题处添加定时任务或探测任务；点击某条任务的“编辑”会打开弹窗。任务可通过暂停（Ⅱ）或开启（▶）图标按钮切换，暂停后整条记录变灰。暂停会停止自动执行；“立即执行”仍可手动运行。重新开启后，到期任务会尽快执行。单次任务按设定时间执行后结束；每日任务按同一当地时间继续执行。
+5. 如果对应类型的记录不存在，会自动创建；存在则更新目标值。A 与 CNAME 互换时，如域名只有一条可安全转换的记录，面板会修改其类型。已有记录的 TTL 会保留；如果存在多条相关记录导致选择不明确，任务会报错。
+6. 探测正常时不保存日志；探测不通后的解析操作和执行错误仍会记录。升级时会清理旧版的“探测正常”日志。日志页面显示最近 200 条记录，可单独清空某条任务的全部日志；删除任务也会同时删除其日志。
+7. **IP 可用性检测：**点击顶部“IP 检测”，填写 IPv4、IPv6 或完整域名。单端口检测默认端口为 `58611`；端口段检测默认范围为 `58610-58639`，可输入 1–65535 之间的连续端口，一次最多 256 个。每个 TCP 连接最多等待 3 秒，失败后重试一次（共尝试两次），端口段并发检测；桌面端结果每行显示 10 个端口，成功端口只显示绿色背景和端口号，失败端口显示红色背景、红色边框和叉号。检测从面板所在服务器发起，不修改 DNS，也不创建任务或保存日志。
+8. **登录状态：**成功登录后保持 30 天，关闭并重新打开浏览器仍有效（需保留浏览器 Cookie）。到期后重新登录；点击“退出”会立即结束当前登录状态。升级后请重新登录一次，以启用 30 天有效期。
+
+> 已有记录集的多个 IP 会被替换成任务中的一个 IP。请只为希望这样管理的解析记录创建任务。
+
+### 关于“国内探测”
+
+TCP 探测从**部署本面板的服务器**发出。要判断中国大陆的访问情况，需要把面板部署在中国大陆的服务器上。单台服务器只能代表该节点的连通性，不能证明全国所有运营商都可访问或不可访问。探测失败后只执行切换，不会在探测恢复时自动切回原记录。
+
+## 手动部署
+
+```bash
+git clone https://github.com/hainiu6/HWddns.git
+cd HWddns
+cp .env.example .env
+python3 -c 'import secrets; print(secrets.token_urlsafe(48))'  # 填入 APP_SECRET
+python3 -c 'import base64,secrets; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())'  # 填入 DATA_KEY
+docker compose up -d --build
+```
+
+查看状态：`docker compose ps`；查看运行日志：`docker compose logs -f`。
+
+## 技术说明
+
+应用使用 Flask、Waitress、SQLite 和 DNS 服务的 Python SDK。服务以单个进程运行，后台每 10 秒检查到期任务。SQLite 数据库存于 Docker 数据卷，容器重建后仍保留。AK/SK 通过 Fernet 加密，密钥只存于 `.env`。不要丢失 `DATA_KEY`，否则无法解密已有凭据。
+
+接口参考：[查询公网域名](https://support.huaweicloud.com/intl/en-us/api-dns/dns_api_62003.html)、[查询记录集](https://support.huaweicloud.com/api-dns/ListRecordSetsByZone.html)、[创建记录集](https://support.huaweicloud.com/api-dns/CreateRecordSet.html)、[修改记录集](https://support.huaweicloud.com/api-dns/UpdateRecordSet.html)。
