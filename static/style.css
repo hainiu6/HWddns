@@ -120,6 +120,8 @@ td.mono { overflow-wrap: anywhere; }
 .check-grid .form-card { max-width: none; }
 .check-grid .stack { gap: 18px; }
 .check-form .button { margin-top: auto; }
+.check-form input { margin-top: 0; }
+.check-form input::placeholder { color: #64748b; opacity: 1; }
 .step-badge { color: #526176; background: #f1f5f9; border-radius: 7px; padding: 6px 10px; font-weight: 600; font-size: 12px; }
 .check-result { margin-top: 22px; }
 .result-panel { padding: 24px; }
